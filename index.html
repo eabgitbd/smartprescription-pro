@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Prescription Pro</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Hind Siliguri', 'Noto Sans Bengali', 'Arial', 'sans-serif'],
+            bengali: ['Hind Siliguri', 'Noto Sans Bengali', 'Arial', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Bengali & Professional Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Export Libraries (Loaded instantly) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Custom CSS for Scrollbars & Print -->
+  <style>
+    .bengali-font { font-family: 'Hind Siliguri', 'Noto Sans Bengali', Arial, sans-serif !important; }
+    .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; border-radius: 8px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 8px; }
+  </style>
+
+  <!-- Babel for in-browser JSX parsing -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Import Maps for React & ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.260.0?deps=react@18.2.0"
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 font-sans text-slate-900 selection:bg-blue-200">
+  
+  <!-- App Mount Point -->
+  <div id="root"></div>
+
+  <!-- Main Application Script -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useRef, useMemo } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+      Activity, FileText, Users, BarChart, ShieldCheck, 
+      ChevronRight, LogOut, User, Award, Stethoscope, 
+      Building, Phone, Mail, CheckCircle2, Loader2,
+      Calendar, Clock, UserPlus, HeartPulse, 
+      ActivitySquare, Download, Image as ImageIcon, Plus, 
+      Trash2, Edit3, Database, AlertCircle, Search, Pin, PinOff, 
+      FilePlus, Filter, X, Save, Eye, Printer, History, AlertTriangle
+    } from 'lucide-react';
+
+    // --- FIREBASE SETUP ---
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js';
+    import { 
+      getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, signOut 
+    } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js';
+    import { 
+      getFirestore, doc, setDoc, onSnapshot, collection, addDoc, updateDoc, 
+      increment, getDocs, writeBatch, deleteDoc
+    } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js';
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyB4tK75ZAkS_Wwr5R_FXsLfT6iqwm8Z3SI",
+      authDomain: "drgaziprescriptions.firebaseapp.com",
+      projectId: "drgaziprescriptions",
+      storageBucket: "drgaziprescriptions.firebasestorage.app",
+      messagingSenderId: "950273601902",
+      appId: "1:950273601902:web:0fa064be237751aa1e117f"
+    };
+    
+    const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+    const auth = app ? getAuth(app) : null;
+    const db = app ? getFirestore(app) : null;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    // --- COMMON CHRONIC DISEASES DATABASE ---
+    const CHRONIC_DISEASES_DB = [
+      "Hypertension (HTN)", "Type 2 Diabetes Mellitus (T2DM)", "Type 1 Diabetes Mellitus (T1DM)",
+      "Bronchial Asthma", "Chronic Obstructive Pulmonary Disease (COPD)", 
+      "Ischemic Heart Disease (IHD)", "Chronic Kidney Disease (CKD)", 
+      "Hypothyroidism", "Hyperthyroidism", "Osteoarthritis (OA)", 
+      "Rheumatoid Arthritis (RA)", "Peptic Ulcer Disease (PUD)", 
+      "Stroke / CVA", "Dyslipidemia", "Heart Failure", "Tuberculosis (TB)"
+    ];
+
+    // --- DEFAULT DRUG DATABASE ---
+    const DEFAULT_DRUG_DB = [
+      { "brand name": "A-Cold", "dosage form": "Syrup", "generic": "Bromhexine Hydrochloride", "strength": "4 mg/5 ml", "manufacturer": "ACME Laboratories Ltd." },
+      { "brand name": "Zytix", "dosage form": "Tablet", "generic": "Abiraterone Acetate", "strength": "250 mg", "manufacturer": "Beacon Pharmaceuticals Ltd." },
+      { "brand name": "Napa", "dosage form": "Tablet", "generic": "Paracetamol", "strength": "500 mg", "manufacturer": "Beximco Pharmaceuticals Ltd." },
+      { "brand name": "Seclo", "dosage form": "Capsule", "generic": "Omeprazole", "strength": "20 mg", "manufacturer": "Square Pharmaceuticals Ltd." }
+    ];
+
+    function App() {
+      const [currentView, setCurrentView] = useState('landing');
+      const [user, setUser] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      
+      const [navData, setNavData] = useState(null);
+      const [drugDatabase, setDrugDatabase] = useState(DEFAULT_DRUG_DB);
+      const [isDbLoading, setIsDbLoading] = useState(false);
+
+      useEffect(() => {
+        if (!auth) { setAuthLoading(false); return; }
+        const initAuth = async () => {
+          try {
+            // When using a custom Firebase config, the platform's default token will be invalid.
+            // We gracefully try the token, and fallback to Anonymous Authentication if it fails.
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              try {
+                await signInWithCustomToken(auth, __initial_auth_token);
+              } catch (customTokenErr) {
+                console.warn("Custom token rejected (expected when using external Firebase configs). Falling back to anonymous sign in...", customTokenErr);
+                await signInAnonymously(auth);
+              }
+            } else {
+              await signInAnonymously(auth);
+            }
+          } catch (error) { 
+            console.error("Auth init failed. Please make sure Anonymous Sign-in is enabled in your Firebase Console.", error); 
+          }
+        };
+        initAuth();
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setAuthLoading(false);
+          if (currentUser && currentView === 'login') setCurrentView('doctorProfile');
+        });
+        return () => unsubscribe();
+      }, [currentView]);
+
+      useEffect(() => {
+        if (!user || !db) return;
+        setIsDbLoading(true);
+        const dbRef = collection(db, 'artifacts', appId, 'users', user.uid, 'drugDb');
+        const unsubscribe = onSnapshot(dbRef, (snapshot) => {
+          if (!snapshot.empty) {
+            let fullDb = [];
+            snapshot.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data.items && Array.isArray(data.items)) fullDb = fullDb.concat(data.items);
+            });
+            if (fullDb.length > 0) setDrugDatabase(fullDb);
+          } else setDrugDatabase(DEFAULT_DRUG_DB);
+          setIsDbLoading(false);
+        });
+        return () => unsubscribe();
+      }, [user, db, appId]);
+
+      const navigateTo = (view, data = null) => {
+        setNavData(data);
+        setCurrentView(view);
+        window.scrollTo(0, 0);
+      };
+
+      const handleLogout = async () => {
+        if (auth) await signOut(auth);
+        navigateTo('landing');
+      };
+
+      if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="h-10 w-10 text-blue-600 animate-spin" /></div>;
+
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-blue-200 flex flex-col">
+          {/* Navigation Bar */}
+          <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm print:hidden">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16 items-center">
+                <div className="flex items-center cursor-pointer" onClick={() => navigateTo(user ? 'dashboard' : 'landing')}>
+                  <Activity className="h-8 w-8 text-blue-600" />
+                  <span className="ml-2 text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-teal-500 hidden sm:block">Smart Prescription Pro</span>
+                </div>
+                
+                {user && currentView !== 'landing' && currentView !== 'login' && (
+                  <div className="hidden md:flex space-x-1 lg:space-x-2">
+                    <button onClick={() => navigateTo('dashboard')} className={`px-3 py-2 rounded-md text-sm font-medium ${currentView === 'dashboard' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}>Dashboard</button>
+                    <button onClick={() => navigateTo('patients')} className={`px-3 py-2 rounded-md text-sm font-medium ${currentView === 'patients' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}>Patients</button>
+                    <button onClick={() => navigateTo('prescriptions')} className={`px-3 py-2 rounded-md text-sm font-medium ${['prescriptions', 'prescriptionViewer'].includes(currentView) ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}>Prescriptions</button>
+                    <button onClick={() => navigateTo('doctorProfile')} className={`px-3 py-2 rounded-md text-sm font-medium ${currentView === 'doctorProfile' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}>My Profile</button>
+                  </div>
+                )}
+
+                <div>
+                  {!user ? (
+                    currentView === 'landing' && <button onClick={() => navigateTo('login')} className="px-6 py-2 rounded-full text-white bg-blue-600 hover:bg-blue-700 shadow-md">Login / Register</button>
+                  ) : (
+                    <button onClick={handleLogout} className="flex items-center px-4 py-2 text-sm text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg"><LogOut className="h-4 w-4 sm:mr-2" /><span className="hidden sm:block">Logout</span></button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </nav>
+
+          <main className="flex-grow">
+            {currentView === 'landing' && <LandingPage navigateTo={navigateTo} />}
+            {currentView === 'login' && <LoginView navigateTo={navigateTo} user={user} />}
+            {currentView === 'doctorProfile' && <DoctorProfileSetup user={user} db={db} appId={appId} navigateTo={navigateTo} />}
+            {currentView === 'dashboard' && <Dashboard user={user} db={db} appId={appId} navigateTo={navigateTo} />}
+            {currentView === 'patients' && <PatientsDirectory user={user} db={db} appId={appId} navigateTo={navigateTo} />}
+            {currentView === 'prescriptions' && <PrescriptionsDirectory user={user} db={db} appId={appId} navigateTo={navigateTo} initialSearch={navData?.searchQuery} />}
+            {currentView === 'prescriptionWriter' && <PrescriptionWriter user={user} db={db} appId={appId} patient={navData?.patient} existingRx={navData?.prescription} navigateTo={navigateTo} drugDatabase={drugDatabase} isDbLoading={isDbLoading} />}
+            {currentView === 'prescriptionViewer' && <PrescriptionViewer user={user} db={db} appId={appId} prescription={navData} navigateTo={navigateTo} />}
+          </main>
+        </div>
+      );
+    }
+
+    /* =========================================
+       UNIVERSAL PRESCRIPTION A4 TEMPLATE
+       ========================================= */
+    const PrescriptionTemplate = React.forwardRef(({ profile, patient, data }, ref) => {
+      return (
+        <div ref={ref} className="bg-white shadow-lg print:shadow-none mx-auto relative overflow-hidden bengali-font" style={{ width: '794px', minHeight: '1123px', padding: '40px', boxSizing: 'border-box' }}>
+          {/* Header */}
+          <div className="border-b-2 border-blue-800 pb-4 mb-4 flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-blue-900 uppercase tracking-tight">{profile?.fullName || 'Dr. Doctor Name'}</h1>
+              <p className="text-sm font-semibold text-slate-700 mt-1">{profile?.degrees || 'MBBS, FCPS'}</p>
+              <p className="text-sm text-slate-600">{profile?.specialty}</p>
+              <p className="text-sm text-slate-600">{profile?.registrationNo}</p>
+            </div>
+            <div className="text-right text-sm text-slate-600">
+              <p className="font-bold text-slate-800">{profile?.clinicName}</p>
+              <p>{profile?.phone}</p>
+              <p>{profile?.email}</p>
+            </div>
+          </div>
+
+          {/* Sub-header */}
+          <div className="flex flex-wrap gap-x-6 gap-y-2 py-3 px-4 border-b border-slate-300 text-sm text-slate-800 bg-slate-50 mb-6 rounded-t-lg">
+            <p><span className="font-semibold text-slate-500 mr-1">Name:</span> {patient?.name}</p>
+            <p><span className="font-semibold text-slate-500 mr-1">Age:</span> {patient?.age}</p>
+            <p><span className="font-semibold text-slate-500 mr-1">Sex:</span> {patient?.gender}</p>
+            {patient?.bloodGroup && <p><span className="font-semibold text-slate-500 mr-1">BG:</span> {patient.bloodGroup}</p>}
+            {patient?.weight && <p><span className="font-semibold text-slate-500 mr-1">Wt:</span> {patient.weight}</p>}
+            {patient?.profession && <p><span className="font-semibold text-slate-500 mr-1">Prof:</span> {patient.profession}</p>}
+            {patient?.contact && <p><span className="font-semibold text-slate-500 mr-1">Phone:</span> {patient.contact}</p>}
+            {patient?.location && <p><span className="font-semibold text-slate-500 mr-1">Loc:</span> {patient.location}</p>}
+            
+            <p className="ml-auto w-full text-right text-xs text-slate-500 mt-1"><span className="font-semibold mr-1">Date:</span> {data?.date || new Date().toLocaleDateString('en-GB')}</p>
+          </div>
+
+          {/* Body */}
+          <div className="flex gap-6 min-h-[700px]">
+            <div className="w-1/3 border-r border-slate-200 pr-4 space-y-6">
+              {data?.complaints && <div><h3 className="font-bold text-sm border-b mb-2">C/C:</h3><div className="text-sm whitespace-pre-wrap">{data.complaints}</div></div>}
+              {data?.findings && <div><h3 className="font-bold text-sm border-b mb-2">O/E:</h3><div className="text-sm whitespace-pre-wrap">{data.findings}</div></div>}
+              {patient?.chronicDiseases && <div><h3 className="font-bold text-sm border-b mb-2">Co-morbidities:</h3><div className="text-sm whitespace-pre-wrap">{patient.chronicDiseases}</div></div>}
+              {patient?.allergies && <div><h3 className="font-bold text-sm border-b border-red-200 mb-2 text-red-600 italic">Allergies:</h3><div className="text-sm whitespace-pre-wrap font-bold text-red-600 italic">{patient.allergies}</div></div>}
+              {data?.investigations && <div><h3 className="font-bold text-sm border-b mb-2">Investigations Advised:</h3><div className="text-sm whitespace-pre-wrap">{data.investigations}</div></div>}
+            </div>
+
+            <div className="w-2/3 pl-2 flex flex-col">
+              <div className="text-4xl font-serif text-blue-900 font-bold mb-6">Rx.</div>
+              <div className="flex-grow space-y-5">
+                {(data?.medicines || []).map((m, index) => (
+                  <div key={m.id || index} className="flex flex-col">
+                    <div className="font-bold text-base">{index + 1}. {m.name}</div>
+                    <div className="flex gap-4 text-sm mt-1 ml-4 text-slate-700">
+                      <span className="font-medium bg-slate-100 px-2 rounded">{m.dose}</span><span>— {m.duration}</span><span className="italic">({m.instruction})</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {data?.advice && <div className="mt-12 pt-4 border-t"><h3 className="font-bold text-sm mb-2">Advice:</h3><div className="text-sm whitespace-pre-wrap leading-relaxed">{data.advice}</div></div>}
+            </div>
+          </div>
+          <div className="mt-12 pt-8 flex justify-end"><div className="text-center border-t border-slate-800 pt-2 w-48"><p className="text-sm font-bold">Signature</p></div></div>
+        </div>
+      );
+    });
+
+    /* =========================================
+       PRESCRIPTIONS DIRECTORY PANEL
+       ========================================= */
+    function PrescriptionsDirectory({ user, db, appId, navigateTo, initialSearch = '' }) {
+      const [prescriptions, setPrescriptions] = useState([]);
+      const [searchQuery, setSearchQuery] = useState(initialSearch);
+      const [isLoading, setIsLoading] = useState(true);
+
+      useEffect(() => {
+        if (!user || !db) return;
+        const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'prescriptions');
+        const unsubscribe = onSnapshot(colRef, (snapshot) => {
+          const rxs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          rxs.sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+          });
+          setPrescriptions(rxs);
+          setIsLoading(false);
+        });
+        return () => unsubscribe();
+      }, [user, db, appId]);
+
+      const togglePin = async (rx) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'prescriptions', rx.id), { pinned: !rx.pinned });
+      };
+
+      const filteredRxs = prescriptions.filter(rx => 
+        rx.patientName?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      return (
+        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center"><FileText className="h-6 w-6 mr-2 text-blue-600" /> Prescriptions History</h1>
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+              <input 
+                type="text" placeholder="Search by patient name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+              />
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-8 w-8 text-blue-600 animate-spin" /></div>
+          ) : filteredRxs.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+              <FileText className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-slate-500">No prescriptions found. Create one from the Patients directory.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredRxs.map(rx => {
+                const rxDate = new Date(rx.createdAt);
+                return (
+                  <div key={rx.id} className="group relative bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                    {rx.pinned && <div className="absolute top-0 right-0 w-0 h-0 border-t-[30px] border-l-[30px] border-t-yellow-400 border-l-transparent"><Pin className="absolute -top-[28px] -left-[14px] h-3 w-3 text-white fill-white" /></div>}
+                    
+                    <h3 className="font-bold text-lg text-slate-900 truncate pr-4">{rx.patientName}</h3>
+                    <div className="mt-2 text-sm text-slate-500 flex items-center">
+                      <Calendar className="h-4 w-4 mr-1.5 text-blue-500" /> {rxDate.toLocaleDateString('en-GB')}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-500 flex items-center">
+                      <Clock className="h-4 w-4 mr-1.5 text-teal-500" /> {rxDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2">
+                      <span className="px-2 py-1 bg-slate-100 text-xs rounded-md text-slate-600 font-medium">{rx.medicines?.length || 0} Medicines</span>
+                    </div>
+
+                    <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 rounded-xl">
+                      <button onClick={() => navigateTo('prescriptionViewer', rx)} className="p-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full" title="View"><Eye className="h-5 w-5" /></button>
+                      <button onClick={() => navigateTo('prescriptionWriter', { patient: rx.patientData, prescription: rx })} className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-full" title="Edit"><Edit3 className="h-5 w-5" /></button>
+                      <button onClick={() => navigateTo('prescriptionViewer', { ...rx, autoPrint: true })} className="p-2 bg-teal-500 hover:bg-teal-400 text-white rounded-full" title="Print"><Printer className="h-5 w-5" /></button>
+                      <button onClick={() => togglePin(rx)} className="p-2 bg-yellow-500 hover:bg-yellow-400 text-white rounded-full" title={rx.pinned ? "Unpin" : "Pin"}>{rx.pinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* =========================================
+       PRESCRIPTION VIEWER & PRINTER
+       ========================================= */
+    function PrescriptionViewer({ user, db, appId, prescription, navigateTo }) {
+      const [profile, setProfile] = useState({});
+      const [scriptsLoaded, setScriptsLoaded] = useState(true); // Scripts loaded in <head>
+      const [isExporting, setIsExporting] = useState(false);
+      const viewerRef = useRef(null);
+
+      useEffect(() => {
+        if (!user || !db) return;
+        const unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), (docSnap) => {
+          if (docSnap.exists()) setProfile(docSnap.data());
+        });
+        return () => unsubscribe();
+      }, [user, db, appId]);
+
+      useEffect(() => {
+        if (prescription?.autoPrint) {
+          setTimeout(() => window.print(), 800);
+        }
+      }, [prescription]);
+
+      if (!prescription) {
+        setTimeout(() => navigateTo('prescriptions'), 0);
+        return null;
+      }
+
+      const handleExport = async (type) => {
+        if (!window.html2canvas || !window.jspdf || !viewerRef.current) return;
+        setIsExporting(true);
+        try {
+          const canvas = await window.html2canvas(viewerRef.current, { scale: 3, useCORS: true, backgroundColor: '#ffffff' }); 
+          const filename = `Rx_${prescription.patientName}_${new Date(prescription.createdAt).getTime()}`;
+          if (type === 'jpeg') {
+            const link = document.createElement('a'); link.download = `${filename}.jpeg`; link.href = canvas.toDataURL('image/jpeg', 1.0); link.click();
+          } else {
+            const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${filename}.pdf`);
+          }
+        } catch (error) { console.error(error); } finally { setIsExporting(false); }
+      };
+
+      const rxData = {
+        complaints: prescription.complaints,
+        findings: prescription.findings,
+        investigations: prescription.investigations,
+        medicines: prescription.medicines || [],
+        advice: prescription.advice,
+        chronicDiseases: prescription.chronicDiseases || prescription.patientData?.chronicDiseases || '',
+        date: new Date(prescription.createdAt).toLocaleDateString('en-GB')
+      };
+
+      return (
+        <div className="w-full bg-slate-900 min-h-[calc(100vh-64px)] py-8 flex flex-col items-center print:bg-white print:py-0 print:block bengali-font">
+          
+          <div className="w-full max-w-4xl bg-slate-800 p-4 sm:p-8 rounded-2xl shadow-2xl overflow-y-auto max-h-[75vh] print:max-h-none print:p-0 print:shadow-none print:overflow-visible flex justify-center custom-scrollbar">
+            <PrescriptionTemplate 
+              ref={viewerRef} 
+              profile={profile} 
+              patient={prescription.patientData} 
+              data={rxData} 
+            />
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-center gap-4 print:hidden w-full max-w-4xl bg-white p-4 rounded-xl border border-slate-200 shadow-xl">
+            <button onClick={() => navigateTo('prescriptions')} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition flex items-center">
+              <ChevronRight className="h-5 w-5 mr-1 rotate-180" /> Return
+            </button>
+            <button onClick={() => navigateTo('prescriptionWriter', { patient: prescription.patientData, prescription: prescription })} className="px-6 py-3 bg-slate-600 hover:bg-slate-700 text-white rounded-xl font-medium transition flex items-center shadow-md">
+              <Edit3 className="h-5 w-5 mr-2" /> Edit
+            </button>
+            <button onClick={() => window.print()} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition flex items-center shadow-md">
+              <Printer className="h-5 w-5 mr-2" /> Print (A4)
+            </button>
+            <button onClick={() => handleExport('pdf')} disabled={!scriptsLoaded || isExporting} className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-medium transition flex items-center shadow-md disabled:opacity-70">
+              {isExporting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <Download className="h-5 w-5 mr-2" />} PDF
+            </button>
+            <button onClick={() => handleExport('jpeg')} disabled={!scriptsLoaded || isExporting} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition flex items-center shadow-md disabled:opacity-70">
+              {isExporting ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <ImageIcon className="h-5 w-5 mr-2" />} JPEG
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    /* =========================================
+       PRESCRIPTION WRITER (Save & Edit capabilities)
+       ========================================= */
+    function PrescriptionWriter({ user, db, appId, patient, existingRx, navigateTo, drugDatabase, isDbLoading }) {
+      const [profile, setProfile] = useState({});
+      const [isExporting, setIsExporting] = useState(false);
+      const [isUploadingDB, setIsUploadingDB] = useState(false);
+      const [scriptsLoaded, setScriptsLoaded] = useState(true); // Loaded in head
+      const [isSaving, setIsSaving] = useState(false);
+      
+      const prescriptionRef = useRef(null);
+      const fileInputRef = useRef(null);
+
+      const [complaints, setComplaints] = useState('');
+      const [findings, setFindings] = useState('');
+      const [investigations, setInvestigations] = useState('');
+      const [advice, setAdvice] = useState('');
+      const [medicines, setMedicines] = useState([]);
+      
+      const [rxChronicDiseases, setRxChronicDiseases] = useState('');
+      const [diseaseInput, setDiseaseInput] = useState('');
+      const [showDiseaseSuggestions, setShowDiseaseSuggestions] = useState(false);
+
+      useEffect(() => {
+        if (existingRx) {
+          setComplaints(existingRx.complaints || '');
+          setFindings(existingRx.findings || '');
+          setInvestigations(existingRx.investigations || '');
+          setAdvice(existingRx.advice || '');
+          setMedicines(existingRx.medicines || []);
+          setRxChronicDiseases(existingRx.chronicDiseases || existingRx.patientData?.chronicDiseases || '');
+        } else {
+          setComplaints(patient?.chiefComplaint || '');
+          setFindings('');
+          setInvestigations('');
+          setAdvice('1. Drink plenty of water.\n2. Follow up after 7 days.');
+          setMedicines([]);
+          setRxChronicDiseases(patient?.chronicDiseases || '');
+        }
+      }, [existingRx, patient]);
+      
+      const [medInput, setMedInput] = useState({ name: '', dose: '1+0+1', duration: '5 days', instruction: 'খাওয়ার পর' });
+      const [showMedSuggestions, setShowMedSuggestions] = useState(false);
+      const [filteredDrugs, setFilteredDrugs] = useState([]);
+
+      useEffect(() => {
+        if (!user || !db) return;
+        const unsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), (docSnap) => {
+          if (docSnap.exists()) setProfile(docSnap.data());
+        });
+        return () => unsubscribe();
+      }, [user, db, appId]);
+
+      if (!patient) {
+        setTimeout(() => navigateTo('patients'), 0);
+        return null;
+      }
+
+      const handleMedNameChange = (e) => {
+        const query = e.target.value;
+        setMedInput({ ...medInput, name: query });
+        if (query.trim().length >= 2) {
+          const lowerQuery = query.toLowerCase();
+          const results = drugDatabase.filter(drug => 
+            (drug['brand name'] && drug['brand name'].toLowerCase().includes(lowerQuery)) ||
+            (drug['generic'] && drug['generic'].toLowerCase().includes(lowerQuery))
+          ).slice(0, 30);
+          setFilteredDrugs(results);
+          setShowMedSuggestions(results.length > 0);
+        } else setShowMedSuggestions(false);
+      };
+
+      const handleSelectDrug = (drug) => {
+        const formattedName = `${drug['brand name']} ${drug['strength']} ${drug['dosage form']}`.replace(/\s+/g, ' ').trim();
+        setMedInput({ ...medInput, name: formattedName });
+        setShowMedSuggestions(false);
+      };
+
+      const filteredDiseases = CHRONIC_DISEASES_DB.filter(d => d.toLowerCase().includes(diseaseInput.toLowerCase()));
+      const handleAddDisease = (diseaseStr) => {
+        if(!diseaseStr.trim()) return;
+        const currentList = rxChronicDiseases ? rxChronicDiseases.split(',').map(s=>s.trim()).filter(Boolean) : [];
+        if (!currentList.includes(diseaseStr.trim())) { 
+          currentList.push(diseaseStr.trim()); 
+          setRxChronicDiseases(currentList.join(', ')); 
+        }
+        setDiseaseInput(''); 
+        setShowDiseaseSuggestions(false);
+      };
+
+      const handleLoadJsonDB = async (e) => {
+        const file = e.target.files[0];
+        if (!file || !user || !db) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setIsUploadingDB(true);
+              const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'drugDb');
+              const existingDocs = await getDocs(colRef);
+              const batch = writeBatch(db);
+              existingDocs.docs.forEach((d) => batch.delete(d.ref));
+              const CHUNK_SIZE = 1000;
+              for (let i = 0; i < parsed.length; i += CHUNK_SIZE) {
+                const chunk = parsed.slice(i, i + CHUNK_SIZE);
+                batch.set(doc(colRef, `chunk_${i}`), { items: chunk });
+              }
+              await batch.commit();
+              alert(`Successfully synced ${parsed.length} medicines to your Google Account!`);
+            } else alert("Invalid format.");
+          } catch (err) { alert("Error parsing JSON file."); } 
+          finally { setIsUploadingDB(false); if (fileInputRef.current) fileInputRef.current.value = null; }
+        };
+        reader.readAsText(file);
+      };
+
+      const addMedicine = () => {
+        if (medInput.name.trim() === '') return;
+        setMedicines([...medicines, { ...medInput, id: Date.now() }]);
+        setMedInput({ name: '', dose: '1+0+1', duration: '5 days', instruction: 'খাওয়ার পর' });
+      };
+      const removeMedicine = (id) => setMedicines(medicines.filter(m => m.id !== id));
+
+      const handleSaveToCloud = async () => {
+        if (!user || !db) return;
+        setIsSaving(true);
+        try {
+          const rxPayload = {
+            patientId: patient.id || 'temp',
+            patientName: patient.name,
+            patientData: { ...patient, chronicDiseases: rxChronicDiseases }, 
+            complaints, findings, investigations, medicines, advice,
+            chronicDiseases: rxChronicDiseases, 
+            updatedAt: new Date().toISOString()
+          };
+          
+          if (patient.id) {
+            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'patients', patient.id), {
+              chronicDiseases: rxChronicDiseases
+            });
+          }
+
+          if (existingRx) {
+            await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'prescriptions', existingRx.id), rxPayload);
+          } else {
+            rxPayload.createdAt = new Date().toISOString();
+            rxPayload.pinned = false;
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'prescriptions'), rxPayload);
+          }
+          navigateTo('prescriptions');
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsSaving(false);
+        }
+      };
+
+      const handleExport = async (type) => {
+        if (!window.html2canvas || !window.jspdf || !prescriptionRef.current) return;
+        setIsExporting(true);
+        try {
+          const canvas = await window.html2canvas(prescriptionRef.current, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+          const filename = `Rx_${patient.name}_${Date.now()}`;
+          if (type === 'jpeg') {
+            const link = document.createElement('a'); link.download = `${filename}.jpeg`; link.href = canvas.toDataURL('image/jpeg', 1.0); link.click();
+          } else {
+            const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${filename}.pdf`);
+          }
+        } catch (error) { console.error(error); } finally { setIsExporting(false); }
+      };
+
+      const rxDataForTemplate = { complaints, findings, investigations, medicines, advice, chronicDiseases: rxChronicDiseases, date: existingRx ? new Date(existingRx.createdAt).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB') };
+
+      return (
+        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 grid grid-cols-1 xl:grid-cols-12 gap-8 bengali-font">
+          <div className="xl:col-span-5 space-y-6 print:hidden">
+            
+            {existingRx && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-xl flex items-center text-sm shadow-sm">
+                <Edit3 className="h-5 w-5 mr-2 text-yellow-600" />
+                You are editing a previously saved prescription.
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border p-6">
+              <h2 className="text-xl font-bold flex items-center border-b pb-2 mb-4"><Edit3 className="h-5 w-5 mr-2 text-blue-600" /> Clinical Notes</h2>
+              <div className="space-y-4">
+                <div><label className="block text-sm font-medium mb-1">C/C (Chief Complaints)</label><textarea value={complaints} onChange={(e) => setComplaints(e.target.value)} rows="2" className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none custom-scrollbar" /></div>
+                <div><label className="block text-sm font-medium mb-1">O/E (On Examination)</label><textarea value={findings} onChange={(e) => setFindings(e.target.value)} rows="2" className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none custom-scrollbar" /></div>
+                
+                <div className="pt-2">
+                  <label className="block text-sm font-medium mb-1 flex items-center"><Activity className="w-4 h-4 mr-1 text-blue-600" /> Co-morbidities / H/O</label>
+                  <div className="relative mb-2">
+                    <div className="flex gap-2">
+                      <input type="text" value={diseaseInput} onChange={(e) => { setDiseaseInput(e.target.value); setShowDiseaseSuggestions(true); }} onFocus={() => setShowDiseaseSuggestions(true)} onBlur={() => setTimeout(() => setShowDiseaseSuggestions(false), 200)} placeholder="Add condition (e.g. HTN)..." className="flex-1 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none shadow-inner" />
+                      <button type="button" onClick={() => handleAddDisease(diseaseInput)} className="px-3 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm font-medium transition">Add</button>
+                    </div>
+                    {showDiseaseSuggestions && diseaseInput.length > 0 && filteredDiseases.length > 0 && (
+                      <ul className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
+                        {filteredDiseases.map(d => (<li key={d} onClick={() => handleAddDisease(d)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-0">{d}</li>))}
+                      </ul>
+                    )}
+                  </div>
+                  <textarea value={rxChronicDiseases} onChange={(e) => setRxChronicDiseases(e.target.value)} rows="2" className="w-full rounded-lg border border-blue-200 bg-blue-50 text-blue-900 px-3 py-2 text-sm focus:border-blue-500 outline-none custom-scrollbar" />
+                </div>
+
+                <div><label className="block text-sm font-medium mb-1">Investigations (Advised)</label><textarea value={investigations} onChange={(e) => setInvestigations(e.target.value)} rows="2" className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none custom-scrollbar" /></div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border p-6 overflow-visible">
+              <div className="flex justify-between items-center border-b pb-2 mb-4">
+                <h2 className="text-xl font-bold flex items-center"><ActivitySquare className="h-5 w-5 mr-2 text-blue-600" /> Rx (Medicines)</h2>
+                <input type="file" accept=".json" ref={fileInputRef} onChange={handleLoadJsonDB} className="hidden" />
+                <button onClick={() => !isUploadingDB && fileInputRef.current.click()} disabled={isUploadingDB} className="text-xs px-3 py-1.5 rounded-lg flex items-center bg-slate-100 hover:bg-slate-200">
+                  {isUploadingDB ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Database className="h-3 w-3 mr-1 text-teal-600" />} Upload JSON DB
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2 relative">
+                  <input type="text" placeholder="Medicine Name..." value={medInput.name} onChange={handleMedNameChange} onBlur={() => setTimeout(() => setShowMedSuggestions(false), 200)} onFocus={() => { if(filteredDrugs.length>0 && medInput.name.length>=2) setShowMedSuggestions(true); }} className="w-full rounded-lg border px-3 py-2 text-sm outline-none shadow-inner focus:border-blue-500" />
+                  {showMedSuggestions && (
+                    <ul className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-2xl max-h-64 overflow-y-auto custom-scrollbar">
+                      {filteredDrugs.map((drug, idx) => (
+                        <li key={idx} onClick={() => handleSelectDrug(drug)} className="p-3 border-b hover:bg-blue-50 cursor-pointer text-sm">
+                          <div className="font-medium">{drug['brand name']} <span className="font-normal">{drug['dosage form']}</span> <i className="text-slate-600">({drug['strength']})</i></div>
+                          <div className="text-xs text-slate-500 mt-1">{drug['generic']}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div><input type="text" placeholder="Dose" value={medInput.dose} onChange={(e) => setMedInput({...medInput, dose: e.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none" /></div>
+                <div><input type="text" placeholder="Duration" value={medInput.duration} onChange={(e) => setMedInput({...medInput, duration: e.target.value})} className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none" /></div>
+                <div className="col-span-2 flex gap-2">
+                  <input type="text" placeholder="Instruction (খাওয়ার পর)" value={medInput.instruction} onChange={(e) => setMedInput({...medInput, instruction: e.target.value})} className="flex-1 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+                  <button onClick={addMedicine} className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700"><Plus className="h-5 w-5" /></button>
+                </div>
+              </div>
+              <ul className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                {medicines.map((m, i) => (
+                  <li key={m.id} className="text-sm bg-slate-50 p-2 rounded flex justify-between items-center border">
+                    <div><span className="font-semibold">{i+1}. {m.name}</span><br/><span className="text-xs text-slate-500">{m.dose} — {m.duration} ({m.instruction})</span></div>
+                    <button onClick={() => removeMedicine(m.id)} className="text-red-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border p-6">
+              <h2 className="text-xl font-bold mb-4 flex items-center border-b pb-2"><CheckCircle2 className="h-5 w-5 mr-2 text-blue-600" /> Advice</h2>
+              <textarea value={advice} onChange={(e) => setAdvice(e.target.value)} rows="3" className="w-full rounded-lg border px-3 py-2 text-sm focus:border-blue-500 outline-none custom-scrollbar" />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button onClick={() => handleExport('pdf')} disabled={!scriptsLoaded || isExporting} className="flex-1 bg-teal-600 text-white py-3 rounded-xl font-medium hover:bg-teal-700 flex items-center justify-center disabled:opacity-70 shadow-sm"><Download className="h-5 w-5 mr-2" /> PDF</button>
+                <button onClick={() => handleExport('jpeg')} disabled={!scriptsLoaded || isExporting} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-medium hover:bg-blue-700 flex items-center justify-center disabled:opacity-70 shadow-sm"><ImageIcon className="h-5 w-5 mr-2" /> JPEG</button>
+              </div>
+              <button onClick={handleSaveToCloud} disabled={isSaving} className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 flex items-center justify-center disabled:opacity-70 shadow-lg">
+                {isSaving ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <Save className="h-5 w-5 mr-2" />} 
+                {existingRx ? 'Update Prescription' : 'Save Prescription to Cloud'}
+              </button>
+            </div>
+          </div>
+
+          <div className="xl:col-span-7 flex justify-center overflow-x-auto bg-slate-200 p-4 rounded-xl border border-slate-300 custom-scrollbar">
+            <PrescriptionTemplate 
+              ref={prescriptionRef} 
+              profile={profile} 
+              patient={patient} 
+              data={rxDataForTemplate} 
+            />
+          </div>
+        </div>
+      );
+    }
+
+    /* =========================================
+       PATIENTS DIRECTORY
+       ========================================= */
+    function PatientsDirectory({ user, db, appId, navigateTo }) {
+      const [patients, setPatients] = useState([]);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [viewMode, setViewMode] = useState('list');
+      const [editingPatient, setEditingPatient] = useState(null);
+      const [chartMetric, setChartMetric] = useState('gender');
+      const [isLoading, setIsLoading] = useState(true);
+      const [showFilters, setShowFilters] = useState(false);
+      const [filters, setFilters] = useState({ gender: [], bloodGroup: [], location: [], profession: [] });
+
+      const [deleteModal, setDeleteModal] = useState({ isOpen: false, step: 1, patientId: null, patientName: '' });
+
+      useEffect(() => {
+        if (!user || !db) return;
+        const colRef = collection(db, 'artifacts', appId, 'users', user.uid, 'patients');
+        const unsubscribe = onSnapshot(colRef, (snapshot) => {
+          const pts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          pts.sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+          });
+          setPatients(pts);
+          setIsLoading(false);
+        });
+        return () => unsubscribe();
+      }, [user, db, appId]);
+
+      const togglePin = async (patient) => {
+        await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'patients', patient.id), { pinned: !patient.pinned });
+      };
+
+      const initiateDelete = (patient) => {
+        setDeleteModal({ isOpen: true, step: 1, patientId: patient.id, patientName: patient.name });
+      };
+
+      const confirmDeleteStep1 = () => setDeleteModal(prev => ({ ...prev, step: 2 }));
+
+      const confirmDeleteStep2 = async () => {
+        const { patientId } = deleteModal;
+        if (!user || !db || !patientId) return;
+
+        try {
+          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'patients', patientId));
+
+          const rxCol = collection(db, 'artifacts', appId, 'users', user.uid, 'prescriptions');
+          const rxSnap = await getDocs(rxCol);
+          
+          const batch = writeBatch(db);
+          let deletedRxCount = 0;
+          rxSnap.docs.forEach(d => {
+            if (d.data().patientId === patientId) {
+              batch.delete(d.ref);
+              deletedRxCount++;
+            }
+          });
+
+          if (deletedRxCount > 0) {
+            await batch.commit();
+          }
+
+          setDeleteModal({ isOpen: false, step: 1, patientId: null, patientName: '' });
+        } catch (error) {
+          console.error("Error permanently deleting patient and data:", error);
+        }
+      };
+
+      const cancelDelete = () => setDeleteModal({ isOpen: false, step: 1, patientId: null, patientName: '' });
+
+      const uniqueLocations = [...new Set(patients.map(p => p.location?.trim()).filter(Boolean))];
+      const uniqueProfessions = [...new Set(patients.map(p => p.profession?.trim()).filter(Boolean))];
+      const allBloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+      const allGenders = ['Male', 'Female'];
+
+      const toggleFilter = (category, value) => {
+        setFilters(prev => {
+          const current = prev[category];
+          const updated = current.includes(value) ? current.filter(item => item !== value) : [...current, value];
+          return { ...prev, [category]: updated };
+        });
+      };
+
+      const clearFilters = () => setFilters({ gender: [], bloodGroup: [], location: [], profession: [] });
+
+      const filteredPatients = patients.filter(p => {
+        const matchesSearch = p.name?.toLowerCase().includes(searchQuery.toLowerCase()) || p.contact?.includes(searchQuery);
+        const matchesGender = filters.gender.length === 0 || filters.gender.includes(p.gender);
+        const matchesBG = filters.bloodGroup.length === 0 || filters.bloodGroup.includes(p.bloodGroup);
+        const matchesLoc = filters.location.length === 0 || filters.location.includes(p.location?.trim());
+        const matchesProf = filters.profession.length === 0 || filters.profession.includes(p.profession?.trim());
+        return matchesSearch && matchesGender && matchesBG && matchesLoc && matchesProf;
+      });
+
+      const chartData = useMemo(() => {
+        const dataMap = {};
+        let totalSlices = 0;
+        patients.forEach(p => {
+          if (chartMetric === 'gender') { const key = p.gender || 'Unknown'; dataMap[key] = (dataMap[key] || 0) + 1; totalSlices++; }
+          else if (chartMetric === 'bloodGroup') { const key = p.bloodGroup || 'Not Recorded'; dataMap[key] = (dataMap[key] || 0) + 1; totalSlices++; }
+          else if (chartMetric === 'age') { const ageNum = parseInt(p.age); let key = 'Unknown'; if (!isNaN(ageNum)) { if (ageNum < 18) key = '< 18 Yrs'; else if (ageNum <= 40) key = '18 - 40 Yrs'; else if (ageNum <= 60) key = '41 - 60 Yrs'; else key = '> 60 Yrs'; } dataMap[key] = (dataMap[key] || 0) + 1; totalSlices++; }
+          else if (chartMetric === 'weight') { const wNum = parseFloat(p.weight); let key = 'Not Recorded'; if (!isNaN(wNum)) { const lower = Math.floor(wNum / 5) * 5; key = `${lower}-${lower + 4} kg`; } dataMap[key] = (dataMap[key] || 0) + 1; totalSlices++; }
+          else if (chartMetric === 'chronicDiseases') { if (!p.chronicDiseases || p.chronicDiseases.trim() === '') { dataMap['None Reported'] = (dataMap['None Reported'] || 0) + 1; totalSlices++; } else { const diseases = p.chronicDiseases.split(',').map(d => d.trim()).filter(Boolean); diseases.forEach(d => { const formatted = d.charAt(0).toUpperCase() + d.slice(1); dataMap[formatted] = (dataMap[formatted] || 0) + 1; totalSlices++; }); } }
+          else if (chartMetric === 'allergies') { if (!p.allergies || p.allergies.trim() === '') { dataMap['None Reported'] = (dataMap['None Reported'] || 0) + 1; totalSlices++; } else { const allergens = p.allergies.split(',').map(a => a.trim().toLowerCase()).filter(Boolean); allergens.forEach(a => { const formatted = a.charAt(0).toUpperCase() + a.slice(1); dataMap[formatted] = (dataMap[formatted] || 0) + 1; totalSlices++; }); } }
+          else if (chartMetric === 'profession') { let key = p.profession ? p.profession.trim() : 'Not Recorded'; key = key.charAt(0).toUpperCase() + key.slice(1).toLowerCase(); if (key === '') key = 'Not Recorded'; dataMap[key] = (dataMap[key] || 0) + 1; totalSlices++; }
+        });
+        const total = totalSlices || 1;
+        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e', '#64748b'];
+        let currentDegree = 0;
+        return Object.entries(dataMap).sort((a, b) => b[1] - a[1]).map(([label, count], index) => {
+          const percentage = (count / total) * 100; const degree = (percentage / 100) * 360; const slice = { label, count, percentage, color: colors[index % colors.length], startDegree: currentDegree, endDegree: currentDegree + degree }; currentDegree += degree; return slice;
+        });
+      }, [patients, chartMetric]);
+      const conicGradient = chartData.map(d => `${d.color} ${d.startDegree}deg ${d.endDegree}deg`).join(', ');
+
+      return (
+        <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 bengali-font relative">
+          
+          {deleteModal.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95">
+                <div className={`flex items-center justify-center w-14 h-14 rounded-full mb-4 mx-auto ${deleteModal.step === 1 ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
+                  <AlertTriangle className="h-7 w-7" />
+                </div>
+                <h3 className="text-xl font-bold text-center text-slate-900 mb-2">
+                  {deleteModal.step === 1 ? "Delete Patient Profile?" : "Final Warning: Irreversible Action!"}
+                </h3>
+                <p className="text-center text-slate-600 mb-8 font-medium">
+                  {deleteModal.step === 1 
+                    ? `Are you sure you want to delete ${deleteModal.patientName}'s profile?` 
+                    : `You are about to permanently delete ${deleteModal.patientName}'s profile AND all their associated prescriptions from the cloud. This data cannot be retrieved.`}
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={cancelDelete} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">
+                    {deleteModal.step === 1 ? "No, Cancel" : "Cancel"}
+                  </button>
+                  <button onClick={deleteModal.step === 1 ? confirmDeleteStep1 : confirmDeleteStep2} className={`flex-1 py-3 font-bold text-white rounded-xl transition-colors ${deleteModal.step === 1 ? 'bg-orange-500 hover:bg-orange-600' : 'bg-red-600 hover:bg-red-700 shadow-md shadow-red-600/20'}`}>
+                    {deleteModal.step === 1 ? "Yes, Proceed" : "Permanently Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {viewMode === 'form' ? (
+            <PatientForm user={user} db={db} appId={appId} existingPatient={editingPatient} onClose={() => { setViewMode('list'); setEditingPatient(null); }} navigateTo={navigateTo} />
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <h1 className="text-2xl font-bold text-slate-800">Patients Directory</h1>
+                  <button onClick={() => { setEditingPatient(null); setViewMode('form'); }} className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <UserPlus className="h-5 w-5 mr-2"/> New Patient
+                  </button>
+                </div>
+                <div className="flex gap-2 relative">
+                  <div className="relative flex-grow">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                    <input type="text" placeholder="Search patients by name or phone..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm" />
+                  </div>
+                  <button onClick={() => setShowFilters(!showFilters)} className={`px-4 py-3 border rounded-xl flex items-center transition ${showFilters || Object.values(filters).some(arr => arr.length > 0) ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-slate-300 text-slate-600'}`}>
+                    <Filter className="h-5 w-5" />
+                  </button>
+                </div>
+                
+                {showFilters && (
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-semibold text-slate-800 flex items-center"><Filter className="h-4 w-4 mr-1"/> Filter Patients</h3><button onClick={clearFilters} className="text-sm text-blue-600 hover:text-blue-800">Clear All</button></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div><h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Sex</h4><div className="flex flex-wrap gap-2">{allGenders.map(g => (<label key={g} className="flex items-center text-sm cursor-pointer"><input type="checkbox" checked={filters.gender.includes(g)} onChange={() => toggleFilter('gender', g)} className="mr-1.5 rounded text-blue-600" /> {g}</label>))}</div></div>
+                      <div><h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Blood Group</h4><div className="flex flex-wrap gap-2">{allBloodGroups.map(bg => (<label key={bg} className="flex items-center text-sm cursor-pointer"><input type="checkbox" checked={filters.bloodGroup.includes(bg)} onChange={() => toggleFilter('bloodGroup', bg)} className="mr-1.5 rounded text-blue-600" /> {bg}</label>))}</div></div>
+                      {uniqueLocations.length > 0 && (<div className="md:col-span-2"><h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Location</h4><div className="flex flex-wrap gap-3">{uniqueLocations.map(loc => (<label key={loc} className="flex items-center text-sm cursor-pointer bg-slate-50 px-2 py-1 rounded border border-slate-100"><input type="checkbox" checked={filters.location.includes(loc)} onChange={() => toggleFilter('location', loc)} className="mr-1.5 rounded text-blue-600" /> {loc}</label>))}</div></div>)}
+                      {uniqueProfessions.length > 0 && (<div className="md:col-span-2"><h4 className="text-xs font-bold text-slate-500 uppercase mb-2">Occupation</h4><div className="flex flex-wrap gap-3">{uniqueProfessions.map(prof => (<label key={prof} className="flex items-center text-sm cursor-pointer bg-slate-50 px-2 py-1 rounded border border-slate-100"><input type="checkbox" checked={filters.profession.includes(prof)} onChange={() => toggleFilter('profession', prof)} className="mr-1.5 rounded text-blue-600" /> {prof}</label>))}</div></div>)}
+                    </div>
+                  </div>
+                )}
+
+                {isLoading ? (<div className="flex justify-center py-10"><Loader2 className="h-8 w-8 text-blue-600 animate-spin" /></div>) : filteredPatients.length === 0 ? (<div className="text-center py-10 bg-white rounded-xl border border-dashed border-slate-300"><Users className="h-10 w-10 text-slate-300 mx-auto mb-2" /><p className="text-slate-500">No matching patients found.</p></div>) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {filteredPatients.map(patient => (
+                      <div key={patient.id} className="group relative bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all overflow-hidden">
+                        {patient.pinned && <div className="absolute top-0 right-0 w-0 h-0 border-t-[30px] border-l-[30px] border-t-yellow-400 border-l-transparent"><Pin className="absolute -top-[28px] -left-[14px] h-3 w-3 text-white fill-white" /></div>}
+                        <div className="flex items-start justify-between"><div><h3 className="font-bold text-lg text-slate-900 truncate pr-4">{patient.name}</h3><p className="text-sm text-slate-500">{patient.age} • {patient.gender} {patient.bloodGroup ? `• ${patient.bloodGroup}` : ''}</p></div></div>
+                        <div className="mt-3 text-xs text-slate-400 flex items-center"><Calendar className="h-3 w-3 mr-1" />Visited: {patient.createdAt ? new Date(patient.createdAt).toLocaleDateString('en-GB') : 'Unknown'}</div>
+
+                        <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-xl">
+                          <button onClick={() => navigateTo('prescriptionWriter', { patient })} className="p-2 bg-blue-500 hover:bg-blue-400 text-white rounded-full tooltip-trigger" title="New Prescription"><FilePlus className="h-5 w-5" /></button>
+                          <button onClick={() => navigateTo('prescriptions', { searchQuery: patient.name })} className="p-2 bg-teal-500 hover:bg-teal-400 text-white rounded-full tooltip-trigger" title="Prescriptions History"><History className="h-5 w-5" /></button>
+                          <button onClick={() => { setEditingPatient(patient); setViewMode('form'); }} className="p-2 bg-slate-600 hover:bg-slate-500 text-white rounded-full" title="Edit Profile"><Edit3 className="h-5 w-5" /></button>
+                          <button onClick={() => togglePin(patient)} className="p-2 bg-yellow-500 hover:bg-yellow-400 text-white rounded-full" title={patient.pinned ? "Unpin" : "Pin to Top"}>{patient.pinned ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}</button>
+                          <button onClick={() => initiateDelete(patient)} className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-full" title="Delete Profile"><Trash2 className="h-5 w-5" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="lg:col-span-1">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sticky top-24">
+                  <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><BarChart className="h-5 w-5 mr-2 text-teal-600" /> Demographics</h2>
+                  <select value={chartMetric} onChange={(e) => setChartMetric(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-teal-500 mb-8">
+                    <option value="gender">By Sex</option><option value="age">By Age Group</option><option value="weight">By Weight (5kg ranges)</option><option value="allergies">By Allergies</option><option value="chronicDiseases">By Co-morbidities</option><option value="bloodGroup">By Blood Group</option><option value="profession">By Occupation</option>
+                  </select>
+                  {patients.length > 0 ? (
+                    <div className="flex flex-col items-center">
+                      <div className="w-48 h-48 rounded-full shadow-inner mb-6 relative border-4 border-white" style={{ background: `conic-gradient(${conicGradient})` }}>
+                        <div className="absolute inset-0 m-auto w-24 h-24 bg-white rounded-full shadow-sm flex items-center justify-center flex-col">
+                          <span className="text-xl font-bold text-slate-700">{['allergies', 'chronicDiseases'].includes(chartMetric) ? chartData.reduce((acc, curr) => acc + curr.count, 0) : patients.length}</span>
+                          <span className="text-[10px] text-slate-400 uppercase">{chartMetric === 'allergies' ? 'Allergens' : chartMetric === 'chronicDiseases' ? 'Conditions' : 'Patients'}</span>
+                        </div>
+                      </div>
+                      <div className="w-full space-y-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                        {chartData.map((data, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center"><span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: data.color }}></span><span className="text-slate-600 truncate max-w-[120px]">{data.label}</span></div>
+                            <span className="font-semibold text-slate-800">{data.percentage.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (<p className="text-center text-sm text-slate-400 py-10">Add patients to see analytics.</p>)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // --- PATIENT FORM ---
+    function PatientForm({ user, db, appId, existingPatient, onClose, navigateTo }) {
+      const [patient, setPatient] = useState({ name: '', age: '', gender: 'Male', bloodGroup: '', weight: '', allergies: '', location: '', profession: '', contact: '', chiefComplaint: '', chronicDiseases: '' });
+      const [diseaseInput, setDiseaseInput] = useState('');
+      const [showDiseaseSuggestions, setShowDiseaseSuggestions] = useState(false);
+      const [isSaving, setIsSaving] = useState(false);
+
+      useEffect(() => { if (existingPatient) setPatient(existingPatient); }, [existingPatient]);
+
+      const filteredDiseases = CHRONIC_DISEASES_DB.filter(d => d.toLowerCase().includes(diseaseInput.toLowerCase()));
+      const handleAddDisease = (diseaseStr) => {
+        const currentList = patient.chronicDiseases ? patient.chronicDiseases.split(',').map(s=>s.trim()).filter(Boolean) : [];
+        if (!currentList.includes(diseaseStr)) { currentList.push(diseaseStr); setPatient({ ...patient, chronicDiseases: currentList.join(', ') }); }
+        setDiseaseInput(''); setShowDiseaseSuggestions(false);
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!user || !db) return;
+        setIsSaving(true);
+        try {
+          if (existingPatient) { await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'patients', existingPatient.id), patient); onClose(); } 
+          else {
+            const docRef = await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'patients'), { ...patient, createdAt: new Date().toISOString(), pinned: false });
+            await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'summary'), { today: increment(1), month: increment(1), year: increment(1), totalPatients: increment(1) }, { merge: true });
+            navigateTo('prescriptionWriter', { patient: { id: docRef.id, ...patient } });
+          }
+        } catch (error) { console.error(error); } finally { setIsSaving(false); }
+      };
+
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in duration-300 bengali-font">
+          <div className="border-b border-slate-200 px-6 py-4 flex justify-between items-center bg-slate-50"><h2 className="text-xl font-bold text-slate-800">{existingPatient ? 'Edit Patient Profile' : 'New Patient Profile'}</h2><button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="h-6 w-6"/></button></div>
+          <form onSubmit={handleSubmit} className="p-6 sm:p-8">
+            <p className="text-slate-500 text-sm mb-6">Fields marked with an asterisk (*) are mandatory.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2"><label className="block text-sm font-medium mb-1">Name *</label><input type="text" value={patient.name} onChange={(e) => setPatient({...patient, name: e.target.value})} required className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div><label className="block text-sm font-medium mb-1">Age *</label><input type="text" value={patient.age} onChange={(e) => setPatient({...patient, age: e.target.value})} required className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div><label className="block text-sm font-medium mb-1">Sex *</label><select value={patient.gender} onChange={(e) => setPatient({...patient, gender: e.target.value})} required className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none bg-white"><option value="Male">Male</option><option value="Female">Female</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Blood Group</label><select value={patient.bloodGroup} onChange={(e) => setPatient({...patient, bloodGroup: e.target.value})} className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none bg-white"><option value="">Select...</option><option value="A+">A+</option><option value="A-">A-</option><option value="B+">B+</option><option value="B-">B-</option><option value="O+">O+</option><option value="O-">O-</option><option value="AB+">AB+</option><option value="AB-">AB-</option></select></div>
+              <div><label className="block text-sm font-medium mb-1">Weight</label><input type="text" value={patient.weight} onChange={(e) => setPatient({...patient, weight: e.target.value})} className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div><label className="block text-sm font-medium mb-1">Contact Number</label><input type="tel" value={patient.contact} onChange={(e) => setPatient({...patient, contact: e.target.value})} className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div className="md:col-span-2"><label className="block text-sm font-medium mb-1">Location of Residency</label><input type="text" value={patient.location} onChange={(e) => setPatient({...patient, location: e.target.value})} className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div><label className="block text-sm font-medium mb-1">Occupation</label><input type="text" value={patient.profession} onChange={(e) => setPatient({...patient, profession: e.target.value})} className="w-full rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none" /></div>
+              <div className="md:col-span-2"><label className="block text-sm font-medium mb-1 text-red-600 flex items-center"><AlertCircle className="w-4 h-4 mr-1" /> Allergies</label><input type="text" value={patient.allergies} onChange={(e) => setPatient({...patient, allergies: e.target.value})} className="w-full rounded-lg border border-red-300 bg-red-50 px-4 py-2 focus:ring-2 focus:border-red-500 outline-none text-red-900" /></div>
+              <div className="md:col-span-3 pt-4 border-t border-slate-100">
+                <label className="block text-sm font-medium mb-1 text-blue-800 flex items-center"><Activity className="w-4 h-4 mr-1" /> Common Chronic Diseases / Co-morbidities</label>
+                <div className="relative">
+                  <div className="flex gap-2 mb-2"><input type="text" value={diseaseInput} onChange={(e) => { setDiseaseInput(e.target.value); setShowDiseaseSuggestions(true); }} onFocus={() => setShowDiseaseSuggestions(true)} onBlur={() => setTimeout(() => setShowDiseaseSuggestions(false), 200)} placeholder="Type to search and add diseases..." className="flex-1 rounded-lg border px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none shadow-inner" /><button type="button" onClick={() => handleAddDisease(diseaseInput)} className="px-4 bg-slate-200 hover:bg-slate-300 rounded-lg text-sm font-medium transition">Add Manual</button></div>
+                  {showDiseaseSuggestions && diseaseInput.length > 0 && filteredDiseases.length > 0 && (<ul className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">{filteredDiseases.map(d => (<li key={d} onClick={() => handleAddDisease(d)} className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-0">{d}</li>))}</ul>)}
+                </div>
+                <textarea value={patient.chronicDiseases} onChange={(e) => setPatient({...patient, chronicDiseases: e.target.value})} rows="2" className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 focus:ring-2 focus:border-blue-500 outline-none text-blue-900 mt-2 custom-scrollbar" />
+              </div>
+            </div>
+            <div className="flex justify-end pt-6 mt-6 border-t border-slate-100 gap-3"><button type="button" onClick={onClose} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium transition-colors">Cancel</button><button type="submit" disabled={isSaving} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-xl font-medium flex items-center">{isSaving ? <Loader2 className="animate-spin w-5 h-5 mr-2" /> : null}{existingPatient ? 'Update Profile' : 'Save & Write Prescription'}</button></div>
+          </form>
+        </div>
+      );
+    }
+
+    /* =========================================
+       DASHBOARD & MISC
+       ========================================= */
+    function Dashboard({ user, db, appId, navigateTo }) {
+      const [stats, setStats] = useState({ today: 0, month: 0, year: 0, totalPatients: 0 });
+      useEffect(() => {
+        if (!user || !db) return;
+        const unsub = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'stats', 'summary'), (doc) => { if (doc.exists()) setStats(doc.data()); });
+        return () => unsub();
+      }, [user, db, appId]);
+      return (
+        <div className="max-w-7xl mx-auto py-10 px-4">
+          <div className="flex justify-between items-center mb-8"><h1 className="text-3xl font-bold">Practice Dashboard</h1><button onClick={() => navigateTo('patients')} className="px-5 py-2 bg-blue-600 text-white rounded-lg flex items-center"><UserPlus className="h-5 w-5 mr-2"/> Patients</button></div>
+          <div className="grid grid-cols-3 gap-6">
+            <div className="bg-white rounded-2xl p-6 border flex items-center"><div className="p-4 rounded-xl bg-blue-50 mr-6"><Clock className="h-8 w-8 text-blue-600" /></div><div><p className="text-sm text-slate-500">Today</p><p className="text-3xl font-bold">{stats.today}</p></div></div>
+            <div className="bg-white rounded-2xl p-6 border flex items-center"><div className="p-4 rounded-xl bg-teal-50 mr-6"><Calendar className="h-8 w-8 text-teal-600" /></div><div><p className="text-sm text-slate-500">This Month</p><p className="text-3xl font-bold">{stats.month}</p></div></div>
+            <div className="bg-white rounded-2xl p-6 border flex items-center"><div className="p-4 rounded-xl bg-indigo-50 mr-6"><Users className="h-8 w-8 text-indigo-600" /></div><div><p className="text-sm text-slate-500">Total Patients</p><p className="text-3xl font-bold">{stats.totalPatients}</p></div></div>
+          </div>
+        </div>
+      );
+    }
+
+    function DoctorProfileSetup({ user, db, appId, navigateTo }) {
+      const [profile, setProfile] = useState({ fullName: '', degrees: '', specialty: '', registrationNo: '', clinicName: '', phone: '', email: '' });
+      useEffect(() => {
+        if(!user || !db) return;
+        const unsub = onSnapshot(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), (d) => { if(d.exists()) setProfile(d.data()); });
+        return () => unsub();
+      }, [user, db, appId]);
+      const handleSave = async (e) => {
+        e.preventDefault();
+        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data'), profile, { merge: true });
+        navigateTo('dashboard');
+      };
+      return (
+        <div className="max-w-3xl mx-auto py-12 px-4"><div className="bg-white rounded-2xl shadow-sm border overflow-hidden"><div className="bg-blue-600 px-6 py-6 text-white"><h2 className="text-2xl font-bold">Doctor Profile Setup</h2></div>
+        <form onSubmit={handleSave} className="p-6 space-y-4"><div className="grid grid-cols-2 gap-4"><div className="col-span-2"><label className="text-sm">Full Name</label><input type="text" required value={profile.fullName} onChange={(e) => setProfile({...profile, fullName: e.target.value})} className="w-full border rounded p-2"/></div><div className="col-span-2"><label className="text-sm">Degrees</label><input type="text" required value={profile.degrees} onChange={(e) => setProfile({...profile, degrees: e.target.value})} className="w-full border rounded p-2"/></div></div><button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded">Save</button></form></div></div>
+      );
+    }
+
+    function LoginView({ navigateTo, user }) {
+      const [errorMsg, setErrorMsg] = useState('');
+      useEffect(() => { 
+        if (user) navigateTo('dashboard'); 
+        const timer = setTimeout(() => {
+          if (!user) setErrorMsg('Authentication failed. Please ensure "Anonymous" Sign-in is enabled in your Firebase Console -> Authentication -> Sign-in method.');
+        }, 4000);
+        return () => clearTimeout(timer);
+      }, [user, navigateTo]);
+      
+      return (
+        <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 text-center">
+          <h2 className="text-2xl font-bold text-slate-700 flex items-center justify-center mb-4">
+            {!errorMsg && <Loader2 className="animate-spin mr-3 text-blue-600"/>} 
+            {errorMsg ? 'Authentication Error' : 'Authenticating...'}
+          </h2>
+          {errorMsg && <div className="bg-red-50 text-red-600 border border-red-200 p-4 rounded-xl max-w-md shadow-sm">{errorMsg}</div>}
+        </div>
+      );
+    }
+
+    function LandingPage({ navigateTo }) {
+      return (
+        <div className="text-center pt-32 pb-20">
+          <Activity className="h-20 w-20 text-blue-600 mx-auto mb-8" />
+          <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight text-slate-900">Smart Prescription <span className="text-blue-600">Pro</span></h1>
+          <p className="text-xl text-slate-600 mb-10 max-w-2xl mx-auto">The complete digital clinic management and prescription writing solution for modern healthcare professionals.</p>
+          <button onClick={() => navigateTo('login')} className="px-10 py-4 text-lg bg-blue-600 hover:bg-blue-700 transition-colors text-white rounded-full font-bold shadow-xl">Login / Get Started</button>
+        </div>
+      );
+    }
+
+    // Mount App
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
